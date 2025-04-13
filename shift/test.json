@@ -1,0 +1,429 @@
+{
+    "info": {
+      "_postman_id": "a1b2c3d4-e5f6-7890",
+      "name": "Shift Management API",
+      "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+      {
+        "name": "Authentication",
+        "item": [
+          {
+            "name": "Login (Manager)",
+            "request": {
+              "method": "POST",
+              "header": [],
+              "body": {
+                "mode": "raw",
+                "raw": "{\n    \"email\": \"manager@example.com\",\n    \"password\": \"manager123\"\n}",
+                "options": {
+                  "raw": {
+                    "language": "json"
+                  }
+                }
+              },
+              "url": {
+                "raw": "{{base_url}}/api/auth/login/",
+                "host": ["{{base_url}}"],
+                "path": ["api","auth","login",""]
+              }
+            },
+            "response": []
+          },
+          {
+            "name": "Login (Employer)",
+            "request": {
+              "method": "POST",
+              "header": [],
+              "body": {
+                "mode": "raw",
+                "raw": "{\n    \"email\": \"employer@example.com\",\n    \"password\": \"employer123\"\n}",
+                "options": {
+                  "raw": {
+                    "language": "json"
+                  }
+                }
+              },
+              "url": {
+                "raw": "{{base_url}}/api/auth/login/",
+                "host": ["{{base_url}}"],
+                "path": ["api","auth","login",""]
+              }
+            },
+            "response": []
+          },
+          {
+            "name": "Login (Employee)",
+            "request": {
+              "method": "POST",
+              "header": [],
+              "body": {
+                "mode": "raw",
+                "raw": "{\n    \"email\": \"employee@example.com\",\n    \"password\": \"employee123\"\n}",
+                "options": {
+                  "raw": {
+                    "language": "json"
+                  }
+                }
+              },
+              "url": {
+                "raw": "{{base_url}}/api/auth/login/",
+                "host": ["{{base_url}}"],
+                "path": ["api","auth","login",""]
+              }
+            },
+            "response": []
+          }
+        ]
+      },
+      {
+        "name": "Shifts",
+        "item": [
+          {
+            "name": "Create Shift (Employer)",
+            "request": {
+              "method": "POST",
+              "header": [
+                {
+                  "key": "Authorization",
+                  "value": "Bearer {{employer_token}}"
+                }
+              ],
+              "body": {
+                "mode": "raw",
+                "raw": "{\n    \"title\": \"Morning Shift\",\n    \"description\": \"Opening shift at main location\",\n    \"start_time\": \"2023-12-01T08:00:00Z\",\n    \"end_time\": \"2023-12-01T16:00:00Z\",\n    \"location\": \"123 Main St\",\n    \"required_skills\": [\"cashier\", \"customer service\"],\n    \"hourly_rate\": 15.50\n}",
+                "options": {
+                  "raw": {
+                    "language": "json"
+                  }
+                }
+              },
+              "url": {
+                "raw": "{{base_url}}/api/shifts/",
+                "host": ["{{base_url}}"],
+                "path": ["api","shifts",""]
+              }
+            },
+            "response": []
+          },
+          {
+            "name": "List Shifts (Manager)",
+            "request": {
+              "method": "GET",
+              "header": [
+                {
+                  "key": "Authorization",
+                  "value": "Bearer {{manager_token}}"
+                }
+              ],
+              "url": {
+                "raw": "{{base_url}}/api/shifts/",
+                "host": ["{{base_url}}"],
+                "path": ["api","shifts",""]
+              }
+            },
+            "response": []
+          },
+          {
+            "name": "Approve Shift (Manager)",
+            "request": {
+              "method": "POST",
+              "header": [
+                {
+                  "key": "Authorization",
+                  "value": "Bearer {{manager_token}}"
+                }
+              ],
+              "body": {
+                "mode": "raw",
+                "raw": "{}",
+                "options": {
+                  "raw": {
+                    "language": "json"
+                  }
+                }
+              },
+              "url": {
+                "raw": "{{base_url}}/api/shifts/1/approve/",
+                "host": ["{{base_url}}"],
+                "path": ["api","shifts","1","approve",""]
+              }
+            },
+            "response": []
+          },
+          {
+            "name": "Publish Shift (Employer)",
+            "request": {
+              "method": "POST",
+              "header": [
+                {
+                  "key": "Authorization",
+                  "value": "Bearer {{employer_token}}"
+                }
+              ],
+              "body": {
+                "mode": "raw",
+                "raw": "{}",
+                "options": {
+                  "raw": {
+                    "language": "json"
+                  }
+                }
+              },
+              "url": {
+                "raw": "{{base_url}}/api/shifts/1/publish/",
+                "host": ["{{base_url}}"],
+                "path": ["api","shifts","1","publish",""]
+              }
+            },
+            "response": []
+          }
+        ]
+      },
+      {
+        "name": "Shift Applications",
+        "item": [
+          {
+            "name": "Create Application (Employee)",
+            "request": {
+              "method": "POST",
+              "header": [
+                {
+                  "key": "Authorization",
+                  "value": "Bearer {{employee_token}}"
+                }
+              ],
+              "body": {
+                "mode": "raw",
+                "raw": "{\n    \"shift\": 1,\n    \"message\": \"I have experience with cash handling\"\n}",
+                "options": {
+                  "raw": {
+                    "language": "json"
+                  }
+                }
+              },
+              "url": {
+                "raw": "{{base_url}}/api/applications/",
+                "host": ["{{base_url}}"],
+                "path": ["api","applications",""]
+              }
+            },
+            "response": []
+          },
+          {
+            "name": "Approve Application (Employer)",
+            "request": {
+              "method": "POST",
+              "header": [
+                {
+                  "key": "Authorization",
+                  "value": "Bearer {{employer_token}}"
+                }
+              ],
+              "body": {
+                "mode": "raw",
+                "raw": "{}",
+                "options": {
+                  "raw": {
+                    "language": "json"
+                  }
+                }
+              },
+              "url": {
+                "raw": "{{base_url}}/api/applications/1/approve/",
+                "host": ["{{base_url}}"],
+                "path": ["api","applications","1","approve",""]
+              }
+            },
+            "response": []
+          }
+        ]
+      },
+      {
+        "name": "Shift Assignments",
+        "item": [
+          {
+            "name": "Create Assignment (Employer)",
+            "request": {
+              "method": "POST",
+              "header": [
+                {
+                  "key": "Authorization",
+                  "value": "Bearer {{employer_token}}"
+                }
+              ],
+              "body": {
+                "mode": "raw",
+                "raw": "{\n    \"shift\": 1,\n    \"employee\": 3,\n    \"notes\": \"Direct assignment\"\n}",
+                "options": {
+                  "raw": {
+                    "language": "json"
+                  }
+                }
+              },
+              "url": {
+                "raw": "{{base_url}}/api/assignments/",
+                "host": ["{{base_url}}"],
+                "path": ["api","assignments",""]
+              }
+            },
+            "response": []
+          },
+          {
+            "name": "Start Shift (Employee)",
+            "request": {
+              "method": "POST",
+              "header": [
+                {
+                  "key": "Authorization",
+                  "value": "Bearer {{employee_token}}"
+                }
+              ],
+              "body": {
+                "mode": "raw",
+                "raw": "{}",
+                "options": {
+                  "raw": {
+                    "language": "json"
+                  }
+                }
+              },
+              "url": {
+                "raw": "{{base_url}}/api/assignments/1/start/",
+                "host": ["{{base_url}}"],
+                "path": ["api","assignments","1","start",""]
+              }
+            },
+            "response": []
+          },
+          {
+            "name": "Complete Shift (Employee)",
+            "request": {
+              "method": "POST",
+              "header": [
+                {
+                  "key": "Authorization",
+                  "value": "Bearer {{employee_token}}"
+                }
+              ],
+              "body": {
+                "mode": "raw",
+                "raw": "{\n    \"notes\": \"Completed all tasks\"\n}",
+                "options": {
+                  "raw": {
+                    "language": "json"
+                  }
+                }
+              },
+              "url": {
+                "raw": "{{base_url}}/api/assignments/1/complete/",
+                "host": ["{{base_url}}"],
+                "path": ["api","assignments","1","complete",""]
+              }
+            },
+            "response": []
+          }
+        ]
+      },
+      {
+        "name": "Notifications",
+        "item": [
+          {
+            "name": "List Notifications (Employee)",
+            "request": {
+              "method": "GET",
+              "header": [
+                {
+                  "key": "Authorization",
+                  "value": "Bearer {{employee_token}}"
+                }
+              ],
+              "url": {
+                "raw": "{{base_url}}/api/notifications/",
+                "host": ["{{base_url}}"],
+                "path": ["api","notifications",""]
+              }
+            },
+            "response": []
+          },
+          {
+            "name": "Mark as Read",
+            "request": {
+              "method": "POST",
+              "header": [
+                {
+                  "key": "Authorization",
+                  "value": "Bearer {{employee_token}}"
+                }
+              ],
+              "body": {
+                "mode": "raw",
+                "raw": "{}",
+                "options": {
+                  "raw": {
+                    "language": "json"
+                  }
+                }
+              },
+              "url": {
+                "raw": "{{base_url}}/api/notifications/1/mark_as_read/",
+                "host": ["{{base_url}}"],
+                "path": ["api","notifications","1","mark_as_read",""]
+              }
+            },
+            "response": []
+          }
+        ]
+      },
+      {
+        "name": "Ratings",
+        "item": [
+          {
+            "name": "Create Rating (Employee)",
+            "request": {
+              "method": "POST",
+              "header": [
+                {
+                  "key": "Authorization",
+                  "value": "Bearer {{employee_token}}"
+                }
+              ],
+              "body": {
+                "mode": "raw",
+                "raw": "{\n    \"assignment\": 1,\n    \"rating\": 5,\n    \"comments\": \"Great workplace\"\n}",
+                "options": {
+                  "raw": {
+                    "language": "json"
+                  }
+                }
+              },
+              "url": {
+                "raw": "{{base_url}}/api/ratings/",
+                "host": ["{{base_url}}"],
+                "path": ["api","ratings",""]
+              }
+            },
+            "response": []
+          }
+        ]
+      }
+    ],
+    "variable": [
+      {
+        "key": "base_url",
+        "value": "http://localhost:8000"
+      },
+      {
+        "key": "manager_token",
+        "value": ""
+      },
+      {
+        "key": "employer_token",
+        "value": ""
+      },
+      {
+        "key": "employee_token",
+        "value": ""
+      }
+    ]
+  }

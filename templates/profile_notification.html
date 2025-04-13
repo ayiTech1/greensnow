@@ -1,0 +1,12 @@
+<!-- templates/emails/profile_notification.html -->
+<!DOCTYPE html>
+<html>
+<body>
+  <p>Dear {{ user.first_name }},</p>
+  <p>Your profile has been {{ action }}.</p>
+  {% if action == 'updated' %}
+    <p>It is now pending manager review.</p>
+  {% endif %}
+  <p>Thank you,<br>The Greensnow Team</p>
+</body>
+</html>
