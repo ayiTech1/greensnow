@@ -17,7 +17,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Security
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-fallback-key')
 DEBUG = True
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['192.168.43.55', 'localhost', '127.0.0.1', '10.0.2.2']
 
 # Project Metadata
 PROJECT_NAME = "Greensnow"
@@ -199,6 +199,8 @@ ACCOUNT_EMAIL_VERIFICATION = 'optional'
 CORS_ALLOWED_ORIGINS = [
     "https://your-production-domain.com",
     "http://localhost:3000",
+    "http://192.168.43.55:19000",
+    "exp://192.168.43.55:19000",
 ]
 
 # Twilio

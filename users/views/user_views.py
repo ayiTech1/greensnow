@@ -1,29 +1,39 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
-from users.models import Role
-from users.serializers.user_serializers import (
-    UserRegistrationSerializer, LoginSerializer,
-    TOTPSetupSerializer, TOTPVerifySerializer
-)
-from users.utils import (
-    generate_and_send_otp, validate_cached_otp,
-    generate_qr_code_image
-)
-from django.core.cache import cache
-from django.contrib.auth import get_user_model
-from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.throttling import  ScopedRateThrottle
+from rest_framework.throttling import ScopedRateThrottle
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import TokenError
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import never_cache
-from rest_framework_simplejwt.exceptions import TokenError
+from django.core.cache import cache
+from django.contrib.auth import get_user_model
+from django.db import transaction
 from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
 from allauth.socialaccount.providers.apple.views import AppleOAuth2Adapter
 from dj_rest_auth.registration.views import SocialLoginView
 
+from users.models import Role
+from users.serializers.user_serializers import (
+    RegisterStepOneSerializer,
+    RegisterStepTwoSerializer,
+    UserRegistrationSerializer,
+    LoginSerializer,
+    TOTPSetupSerializer,
+    TOTPVerifySerializer
+)
+from users.utils import (
+    generate_and_send_otp,
+    validate_cached_otp,
+    generate_qr_code_image
+)
 
+import logging
+
+logger = logging.getLogger(__name__)
 User = get_user_model()
+
 
 def get_tokens_for_user(user):
     refresh = RefreshToken.for_user(user)
@@ -32,131 +42,117 @@ def get_tokens_for_user(user):
         "refresh_token": str(refresh)
     }
 
+
 class AuthViewSet(viewsets.ViewSet):
     throttle_classes = [ScopedRateThrottle]
     permission_classes = [AllowAny]
     throttle_scope = "auth"
 
-    @method_decorator(never_cache)
     @action(detail=False, methods=['post'], url_path='register-role')
     def register_role(self, request):
-        role_name = request.data.get('role', '').lower()
-        
-        if not role_name:
-            return Response(
-                {"detail": "Role is required."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
         try:
-            Role.objects.get(name__iexact=role_name)
-        except Role.DoesNotExist:
-            return Response(
-                {"detail": "Invalid role selection."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        request.session['registration_role'] = role_name
-        request.session.save()
-        
-        return Response(
-            {"detail": "Role registered successfully."},
-            status=status.HTTP_200_OK
-        )
+            role_name = request.data.get('role')
+            if not role_name:
+                return Response({"detail": "Role is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-    @method_decorator(never_cache)
-    @action(detail=False, methods=['post'], url_path='register')
-    def register(self, request):
-        role_name = request.data.get('role') or request.session.get('registration_role')
-        
-        if not role_name:
-            return Response(
-                {"detail": "Complete role registration first."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            role = Role.objects.filter(name__iexact=role_name).first()
+            if not role:
+                return Response({"detail": "Invalid role provided."}, status=status.HTTP_400_BAD_REQUEST)
 
-        serializer = UserRegistrationSerializer(
-            data=request.data,
-            context={'request': request}
-        )
-        
-        if serializer.is_valid():
-            user = serializer.save()
-            
-            try:
-                generate_and_send_otp(user, method="email")
-            except Exception:
-                return Response(
-                    {"detail": "User registered. OTP sending failed."},
-                    status=status.HTTP_201_CREATED
-                )
-            
-            if 'registration_role' in request.session:
-                del request.session['registration_role']
-                request.session.save()
+            request.session['registration_role'] = role.name
+            request.session.modified = True
+            return Response({"detail": "Role saved successfully."}, status=status.HTTP_200_OK)
 
-            return Response(
-                {"detail": "User registered successfully. OTP sent to email."},
-                status=status.HTTP_201_CREATED
-            )
-        
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.error(f"Error in register_role: {str(e)}")
+            return Response({"detail": "Internal server error."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['post'], url_path='register-step-1')
+    def register_step_1(self, request):
+        try:
+            serializer = RegisterStepOneSerializer(data=request.data)
+            if serializer.is_valid():
+                request.session['reg_step1'] = serializer.validated_data
+                request.session.modified = True
+                return Response({"detail": "Step 1 data saved."}, status=status.HTTP_200_OK)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        except Exception as e:
+            logger.error(f"Error in register_step_1: {str(e)}")
+            return Response({"detail": "Internal server error."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['post'], url_path='register-step-2')
+    def register_step_2(self, request):
+        try:
+            step1_data = request.session.get('reg_step1')
+            role_name = request.session.get('registration_role')
+
+            if not step1_data or not role_name:
+                return Response({"detail": "Please complete previous steps."}, status=status.HTTP_400_BAD_REQUEST)
+
+            serializer = RegisterStepTwoSerializer(data=request.data)
+            if not serializer.is_valid():
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+            with transaction.atomic():
+                data = {
+                    **step1_data,
+                    **serializer.validated_data,
+                    'role': role_name
+                }
+
+                data.pop('password_confirm')
+                full_serializer = UserRegistrationSerializer(data=data)
+
+                if full_serializer.is_valid():
+                    user = full_serializer.save()
+                    generate_and_send_otp(user, method='email')
+                    request.session.flush()
+                    return Response({"detail": "Registration complete. OTP sent."}, status=status.HTTP_201_CREATED)
+                return Response(full_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        except Exception as e:
+            logger.exception("Error in register_step_2")
+            return Response({"detail": "Internal server error."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @method_decorator(never_cache)
     @action(detail=False, methods=['post'], url_path='verify-otp')
     def verify_otp(self, request):
-        email = request.data.get('email')
         otp_code = request.data.get('otp')
-
+        email = request.session.get('otp_email')
         if not email or not otp_code:
-            return Response(
-                {"detail": "Email and OTP are required."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"detail": "OTP code is required."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             user = User.objects.get(email=email)
         except User.DoesNotExist:
-            return Response(
-                {"detail": "Invalid credentials."},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({"detail": "Invalid OTP session or user does not exist."}, status=status.HTTP_404_NOT_FOUND)
 
         valid, message, code = validate_cached_otp(email, otp_code)
         if not valid:
-            return Response(
-                {"detail": message},
-                status=code
-            )
+            return Response({"detail": message}, status=code)
 
         user.email_verified = True
         user.save()
 
+        request.session.pop('otp_email', None)
+
         token = get_tokens_for_user(user)
-        response = Response(
-            {"detail": "OTP verified successfully."},
-            status=status.HTTP_200_OK
-        )
-        
+        response = Response({
+            "detail": "OTP verified successfully.",
+            "access_token": token["access_token"],
+            "refresh_token": token["refresh_token"]
+        }, status=status.HTTP_200_OK)
+
         response.set_cookie(
-            'access_token',
-            token["access_token"],
-            httponly=True,
-            secure=True,
-            samesite='Lax',
-            path='/',
-            max_age=3600
+            'access_token', token["access_token"],
+            httponly=True, secure=True, samesite='Lax', path='/', max_age=3600
         )
         response.set_cookie(
-            'refresh_token',
-            token["refresh_token"],
-            httponly=True,
-            secure=True,
-            samesite='Lax',
-            path='/auth/',
-            max_age=86400
+            'refresh_token', token["refresh_token"],
+            httponly=True, secure=True, samesite='Lax', path='/auth/', max_age=86400
         )
-        
+
         return response
 
     @method_decorator(never_cache)
@@ -165,21 +161,42 @@ class AuthViewSet(viewsets.ViewSet):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data['user']
-        otp_method = serializer.validated_data['otp_method']
 
-        if otp_method == "authenticator":
+        request.session['otp_email'] = user.email
+        request.session.modified = True
+
+        return Response({
+            "detail": "Login successful. Choose OTP method.",
+            "next": "choose-otp-method"
+        }, status=status.HTTP_200_OK)
+
+    @method_decorator(never_cache)
+    @action(detail=False, methods=['post'], url_path='choose-otp-method')
+    def choose_otp_method(self, request):
+        email = request.session.get('otp_email')
+        method = request.data.get('otp_method')
+
+        if not email or not method:
+            return Response({"detail": "OTP method and session email are required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if method == "authenticator":
             return Response({
                 "detail": "Enter your authenticator app TOTP code.",
                 "next": "verify-totp"
             })
 
         try:
-            generate_and_send_otp(user, method=otp_method)
+            generate_and_send_otp(user, method=method)
         except Exception as e:
             return Response({"detail": f"Failed to send OTP: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         return Response({
-            "detail": f"OTP sent to your {otp_method}. Please verify to complete login.",
+            "detail": f"OTP sent to your {method}.",
             "next": "verify-otp"
         })
 
@@ -209,38 +226,27 @@ class AuthViewSet(viewsets.ViewSet):
         uri = user.get_totp_uri()
         return generate_qr_code_image(uri)
 
-
     @action(detail=False, methods=['post'], url_path='logout', permission_classes=[IsAuthenticated])
     def logout(self, request):
+        refresh_token = request.data.get("refresh_token")
+        if not refresh_token:
+            return Response({"detail": "Refresh token is required."}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
-            refresh_token = request.data.get("refresh_token")
-            if not refresh_token:
-                return Response({"detail": "Refresh token is required."}, status=status.HTTP_400_BAD_REQUEST)
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+        except TokenError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Attempt to blacklist the refresh token
-            try:
-                token = RefreshToken(refresh_token)
-                token.blacklist()  # Will only work if blacklist app is enabled
-            except TokenError as e:
-                return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        response = Response({"detail": "Logout successful."}, status=status.HTTP_200_OK)
+        response.delete_cookie('access_token', path='/')
+        response.delete_cookie('refresh_token', path='/auth/')
+        return response
 
-            response = Response({"detail": "Logout successful."}, status=status.HTTP_200_OK)
-
-            # Delete cookies if using cookie-based storage
-            response.delete_cookie('access_token', path='/')
-            response.delete_cookie('refresh_token', path='/auth/')
-
-            return response
-
-        except Exception as e:
-            return Response({"detail": f"Logout failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
-
-        
     @action(detail=False, methods=['post'], url_path='resend-otp', throttle_scope='resend-otp')
     def resend_otp(self, request):
         email = request.data.get('email')
-        method = request.data.get('method', 'email')  # default to email
+        method = request.data.get('method', 'email')
 
         if not email:
             return Response({"detail": "Email is required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -259,14 +265,11 @@ class AuthViewSet(viewsets.ViewSet):
             return Response({"detail": f"Failed to resend OTP: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         return Response({"detail": f"OTP resent to your {method} successfully."}, status=status.HTTP_200_OK)
-    
 
 
+# Social Login Views
 class GoogleLogin(SocialLoginView):
     adapter_class = GoogleOAuth2Adapter
 
 class AppleLogin(SocialLoginView):
     adapter_class = AppleOAuth2Adapter
-
-
-
