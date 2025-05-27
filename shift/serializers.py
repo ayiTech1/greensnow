@@ -39,7 +39,7 @@ class ShiftSerializer(serializers.ModelSerializer):
             "manager_detail",
             "name",
             "description",
-            "location",
+            "address",
             "location_map_url",
             "company_name",
             "start_time",

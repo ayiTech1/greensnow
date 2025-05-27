@@ -52,9 +52,11 @@ class Shift(TimeStampedModel):
     manager = models.ForeignKey(User, on_delete=models.SET_NULL, related_name='managed_shifts', null=True, blank=True, help_text=_("Manager assigned to oversee the shift"), verbose_name=_("Manager"))
     name = models.CharField(max_length=255, help_text=_("Title or name of the shift"), verbose_name=_("Shift Name"))
     description = models.TextField(blank=True, null=True, help_text=_("Detailed description of the shift"), verbose_name=_("Description"))
-    location = models.TextField(help_text=_("Location address of the shift"), verbose_name=_("Location"))
-    location_map_url = models.URLField(blank=True, null=True, help_text=_("Google Maps or other map URL of the location"), verbose_name=_("Location Map URL"))
+    address = models.TextField(help_text=_("Location address of the shift"), verbose_name=_("Location"))
+    latitude = models.FloatField(null=True, blank=True, help_text=_("Latitude coordinate of the shift location"), verbose_name=_("Latitude"))
+    longitude = models.FloatField(null=True, blank=True, help_text=_("Longitude coordinate of the shift location"), verbose_name=_("Longitude"))
     company_name = models.CharField(max_length=255, blank=True, null=True, help_text=_("Name of the company offering the shift"), verbose_name=_("Company Name"))
+    date = models.DateField(db_index=True, help_text=_("Date when the shift occurs"), verbose_name=_("Shift Date"))
     start_time = models.TimeField(db_index=True, help_text=_("Time when the shift starts"), verbose_name=_("Start Time"))
     end_time = models.TimeField(db_index=True, help_text=_("Time when the shift ends"), verbose_name=_("End Time"))
     base_pay = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, help_text=_("Base pay offered for the shift"), verbose_name=_("Base Pay"))
@@ -111,13 +113,13 @@ class ShiftRating(TimeStampedModel):
         User,
         on_delete=models.CASCADE,
         related_name='given_shift_ratings',
-        verbose_name=_("Rater")  # Can be employee or employer
+        verbose_name=_("Rater")  
     )
     ratee = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
         related_name='received_shift_ratings',
-        verbose_name=_("Ratee")  # The one being rated
+        verbose_name=_("Ratee")  
     )
     rating = models.PositiveIntegerField(
         validators=[MinValueValidator(1), MaxValueValidator(5)],

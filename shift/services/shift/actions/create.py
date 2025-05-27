@@ -4,12 +4,26 @@ from users.models import EmployerProfile
 from shift.models import Shift
 from notification.services import notify_user
 from django.db import transaction
-
+from shift.utils.google_address import geocode_address_google
 
 logger = logging.getLogger('shift')
 
+
+
+
 @transaction.atomic
 def create_shift(user, validated_data):
+    address = validated_data.get('address')
+    if not address:
+        raise ValidationError("Address is required.")
+
+    # 🌐 Geocode using Google Maps
+    latitude, longitude = geocode_address_google(address)
+    validated_data['latitude'] = latitude
+    validated_data['longitude'] = longitude
+    validated_data['location_map_url'] = f"https://maps.google.com/?q={latitude},{longitude}"
+
+    # 🧠 Role-based logic
     if user.is_manager:
         company_name = validated_data.get('company_name')
         if not company_name:
