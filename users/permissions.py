@@ -1,5 +1,4 @@
 from rest_framework import permissions
-from users.models import Role, User
 from rest_framework.permissions import BasePermission
 
 class OwnerOrManagerOrEmployer(permissions.BasePermission):

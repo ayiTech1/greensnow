@@ -1,0 +1,3 @@
+So the line is executed, but it doesn’t wait for the email/SMS to actually be sent.
+ This is the whole point of using Celery: it offloads the work,
+  so your app stays fast and responsive. ✅

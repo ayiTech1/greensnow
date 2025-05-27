@@ -1,239 +1,121 @@
-from rest_framework import viewsets, mixins, status
-from rest_framework.decorators import action
-from rest_framework.response import Response
+from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.exceptions import PermissionDenied, ValidationError
-from django.utils import timezone
-from django.db.models import Q
-from .models import (
-    Shift, ShiftApproval, ShiftApplication,
-    ShiftAssignment, Notification, ShiftRating
-)
-from .serializers import (
-    ShiftSerializer, ShiftApprovalSerializer,
-    ShiftApplicationSerializer, ShiftAssignmentSerializer,
-    NotificationSerializer, ShiftRatingSerializer
-)
-from .permissions import (
-    IsManager, IsEmployer, IsEmployee,
-    IsShiftEmployerOrManager, IsApplicationEmployee,
-    IsAssignmentEmployee, IsRatingParticipant
-)
+from rest_framework.response import Response
+from rest_framework.decorators import action
+from shift.permissions import CanViewShift, CanEditShift, IsManagerOrEmployer, IsManager, IsEmployee
+from django.core.exceptions import ValidationError, PermissionDenied
+from shift.serializers import (ShiftSerializer, ShiftAssignmentSerializer, ShiftRatingSerializer)
+from shift.services.shift.actions.create import create_shift
+from shift.services.shift.actions.update import update_shift
+from shift.services.shift.actions.delete import delete_shift
+from shift.services.shift.actions.approval import approve_shift
+from shift.services.shift.actions.reject import reject_shift
+from shift.services.shift.actions.rating import rate_shift
+from shift.services.shift.gets.approved import get_approved_shifts_for_user
+from shift.services.shift.gets.pending import get_pending_shifts_for_user
+from shift.services.shift.gets.taken import get_taken_shift_assignments_for_user
+from shift.services.assignment.assign import assign_shift_to_employee
+from shift.services.assignment.start import start_shift_assignment
+from shift.services.assignment.cancel import cancel_shift_assignment
+from shift.services.assignment.complete import complete_shift_assignment
+
+def success_response(data, message="Success", status_code=status.HTTP_200_OK):
+    return Response({"data": data, "message": message}, status=status_code)
+
+def error_response(message="Error", status_code=status.HTTP_400_BAD_REQUEST):
+    return Response({"data": None, "message": message}, status=status_code)
+
 
 class ShiftViewSet(viewsets.ModelViewSet):
-    queryset = Shift.objects.all()
     serializer_class = ShiftSerializer
-    permission_classes = [IsAuthenticated]
-    
-    def get_queryset(self):
-        qs = super().get_queryset()
-        
-        if self.request.user.is_manager():
-            return qs.filter(
-                Q(manager=self.request.user) | 
-                Q(employer=self.request.user) | 
-                Q(employer__in=self.request.user.managed_employers.all())
-            ).distinct()
-        elif self.request.user.is_employer():
-            return qs.filter(employer=self.request.user)
-        elif self.request.user.is_employee():
-            return qs.filter(
-                Q(status=ShiftStatus.PUBLISHED) |
-                Q(applications__employee=self.request.user)
-            ).distinct()
-        return qs.none()
-    
-    def get_permissions(self):
-        if self.action == 'create':
-            if self.request.user.is_employer() or self.request.user.is_manager():
-                return [IsAuthenticated()]
-            return [PermissionDenied()]
-        elif self.action in ['update', 'partial_update', 'destroy']:
-            return [IsAuthenticated(), IsShiftEmployerOrManager()]
-        return super().get_permissions()
-    
-    def perform_create(self, serializer):
-        if self.request.user.is_employer():
-            serializer.save(employer=self.request.user)
-        elif self.request.user.is_manager():
-            serializer.save(manager=self.request.user)
-        else:
-            raise PermissionDenied("Only employers and managers can create shifts")
-    
-    @action(detail=True, methods=['post'], permission_classes=[IsManager])
-    def approve(self, request, pk=None):
-        shift = self.get_object()
-        if shift.status != ShiftStatus.APPROVED:  
-            return Response(
-            {"error": "Only approved shifts can be published"},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-        try:
-            shift.update_status(ShiftStatus.APPROVED, request.user)
-            return Response({'status': 'shift approved'})
-        except ValidationError as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    
-    @action(detail=True, methods=['post'], permission_classes=[IsManager])
-    def reject(self, request, pk=None):
-        shift = self.get_object()
-        try:
-            shift.update_status(ShiftStatus.REJECTED, request.user)
-            return Response({'status': 'shift rejected'})
-        except ValidationError as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    
-    @action(detail=True, methods=['post'], permission_classes=[IsEmployer | IsManager])
-    def publish(self, request, pk=None):
-        shift = self.get_object()
-        try:
-            shift.update_status(ShiftStatus.PUBLISHED, request.user)
-            return Response({'status': 'shift published'})
-        except ValidationError as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    permission_classes = [IsAuthenticated, CanViewShift]
 
-class ShiftApprovalViewSet(viewsets.ModelViewSet):
-    queryset = ShiftApproval.objects.all()
-    serializer_class = ShiftApprovalSerializer
-    permission_classes = [IsAuthenticated, IsManager]
-    
-    def get_queryset(self):
-        return super().get_queryset().filter(manager=self.request.user)
-    
-    def perform_create(self, serializer):
-        raise PermissionDenied("Cannot create approvals directly")
-
-class ShiftApplicationViewSet(viewsets.ModelViewSet):
-    queryset = ShiftApplication.objects.all()
-    serializer_class = ShiftApplicationSerializer
-    
-    def get_queryset(self):
-        qs = super().get_queryset()
-        
-        if self.request.user.is_manager():
-            return qs.filter(shift__manager=self.request.user)
-        elif self.request.user.is_employer():
-            return qs.filter(shift__employer=self.request.user)
-        elif self.request.user.is_employee():
-            return qs.filter(employee=self.request.user)
-        return qs.none()
-    
     def get_permissions(self):
-        if self.action in ['create']:
-            self.permission_classes = [IsEmployee]
-        elif self.action in ['update', 'partial_update', 'destroy']:
-            self.permission_classes = [IsAuthenticated, IsApplicationEmployee | IsEmployer | IsManager]
-        else:
-            self.permission_classes = [IsAuthenticated]
+        if self.action in ['update', 'partial_update', 'destroy']:
+            return [IsAuthenticated(), CanEditShift()]
         return super().get_permissions()
-    
-    @action(detail=True, methods=['post'], permission_classes=[IsEmployer | IsManager])
-    def approve(self, request, pk=None):
-        application = self.get_object()
-        try:
-            application.approve()
-            return Response({'status': 'application approved'})
-        except ValidationError as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    
-    @action(detail=True, methods=['post'], permission_classes=[IsEmployer | IsManager])
-    def reject(self, request, pk=None):
-        application = self.get_object()
-        try:
-            application.reject()
-            return Response({'status': 'application rejected'})
-        except ValidationError as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-class ShiftAssignmentViewSet(viewsets.ModelViewSet):
-    queryset = ShiftAssignment.objects.all()
-    serializer_class = ShiftAssignmentSerializer
-    
-    def get_queryset(self):
-        qs = super().get_queryset()
-        
-        if self.request.user.is_manager():
-            return qs.all()
-        elif self.request.user.is_employer():
-            return qs.filter(shift__employer=self.request.user)
-        elif self.request.user.is_employee():
-            return qs.filter(employee=self.request.user)
-        return qs.none()
-    
-    def get_permissions(self):
-        if self.action in ['create']:
-            self.permission_classes = [IsAuthenticated, IsEmployer | IsManager]
-        elif self.action in ['update', 'partial_update', 'destroy']:
-            self.permission_classes = [IsAuthenticated, IsAssignmentEmployee | IsEmployer | IsManager]
-        else:
-            self.permission_classes = [IsAuthenticated]
-        return super().get_permissions()
-    
-    @action(detail=True, methods=['post'], permission_classes=[IsAssignmentEmployee])
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        shift = create_shift(request.user, serializer.validated_data)
+        return success_response(self.get_serializer(shift).data, message="Shift created", status_code=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        shift = self.get_object()
+        self.check_object_permissions(request, shift)
+        serializer = self.get_serializer(shift, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        updated_shift = update_shift(request.user, shift, serializer.validated_data)
+        return success_response(self.get_serializer(updated_shift).data, message="Shift updated")
+
+    def destroy(self, request, *args, **kwargs):
+        shift = self.get_object()
+        self.check_object_permissions(request, shift)
+        delete_shift(request.user, shift)
+        return success_response(None, message="Shift deleted", status_code=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated, IsManagerOrEmployer])
+    def pending(self, request):
+        shifts = get_pending_shifts_for_user(request.user)
+        serializer = self.get_serializer(shifts, many=True)
+        return success_response(serializer.data, "Pending shifts retrieved")
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated, IsManagerOrEmployer])
+    def approved(self, request):
+        shifts = get_approved_shifts_for_user(request.user)
+        serializer = self.get_serializer(shifts, many=True)
+        return success_response(serializer.data, "Approved shifts retrieved")
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated, IsManagerOrEmployer])
+    def taken(self, request):
+        assignments = get_taken_shift_assignments_for_user(request.user)
+        serializer = self.get_serializer(assignments, many=True)
+        return success_response(serializer.data, "Taken shifts retrieved")
+
+    @action(detail=True, methods=['post'], url_path='approve', permission_classes=[IsAuthenticated, IsManager])
+    def approve_shift(self, request, pk=None):
+        shift = approve_shift(request.user, int(pk))
+        return success_response(self.get_serializer(shift).data, "Shift approved")
+
+    @action(detail=True, methods=['post'], url_path='reject', permission_classes=[IsAuthenticated, IsManager])
+    def reject_shift(self, request, pk=None):
+        reason = request.data.get('reason', '')
+        shift = reject_shift(request.user, int(pk), reason)
+        return success_response(self.get_serializer(shift).data, "Shift rejected")
+
+    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated, IsEmployee])
+    def assign(self, request, pk=None):
+        assignment = assign_shift_to_employee(request.user, pk)
+        return success_response(ShiftAssignmentSerializer(assignment).data, "Shift assigned", status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated, IsEmployee])
     def start(self, request, pk=None):
-        assignment = self.get_object()
-        try:
-            assignment.mark_as_started()
-            return Response({'status': 'shift started'})
-        except ValidationError as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    
-    @action(detail=True, methods=['post'], permission_classes=[IsAssignmentEmployee])
+        assignment = start_shift_assignment(request.user, pk)
+        return success_response(ShiftAssignmentSerializer(assignment).data, "Shift started")
+
+    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated, IsEmployee])
+    def cancel(self, request, pk=None):
+        confirm = request.data.get('confirm', False)
+        result = cancel_shift_assignment(request.user, pk, confirm=confirm)
+        return success_response(result, "Shift cancel processed")
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsEmployee])
     def complete(self, request, pk=None):
-        assignment = self.get_object()
-        notes = request.data.get('notes', '')
-        try:
-            assignment.mark_as_completed(notes=notes)
-            return Response({'status': 'shift completed'})
-        except ValidationError as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        notes = request.data.get('completed_notes', None)
+        assignment = complete_shift_assignment(request.user, pk, completed_notes=notes)
+        return success_response(ShiftAssignmentSerializer(assignment).data, "Shift completed")
 
-class NotificationViewSet(mixins.ListModelMixin,
-                        mixins.RetrieveModelMixin,
-                        mixins.UpdateModelMixin,
-                        viewsets.GenericViewSet):
-    queryset = Notification.objects.all()
-    serializer_class = NotificationSerializer
-    permission_classes = [IsAuthenticated]
-    
-    def get_queryset(self):
-        return super().get_queryset().filter(user=self.request.user)
-    
-    @action(detail=True, methods=['post'])
-    def mark_as_read(self, request, pk=None):
-        notification = self.get_object()
-        notification.is_read = True
-        notification.save()
-        return Response({'status': 'notification marked as read'})
-    
-    @action(detail=False, methods=['post'])
-    def mark_all_as_read(self, request):
-        self.get_queryset().update(is_read=True)
-        return Response({'status': 'all notifications marked as read'})
+    @action(detail=False, methods=["post"], permission_classes=[IsAuthenticated])
+    def rate(self, request):
+        serializer = ShiftRatingSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
 
-class ShiftRatingViewSet(viewsets.ModelViewSet):
-    queryset = ShiftRating.objects.all()
-    serializer_class = ShiftRatingSerializer
-    permission_classes = [IsAuthenticated, IsRatingParticipant]
-    
-    def get_queryset(self):
-        qs = super().get_queryset()
-        
-        if self.request.user.is_manager():
-            return qs.all()
-        elif self.request.user.is_employer():
-            return qs.filter(
-                Q(rater=self.request.user) | 
-                Q(ratee=self.request.user) |
-                Q(assignment__shift__employer=self.request.user)
-            ).distinct()
-        elif self.request.user.is_employee():
-            return qs.filter(
-                Q(rater=self.request.user) | 
-                Q(ratee=self.request.user) |
-                Q(assignment__employee=self.request.user)
-            ).distinct()
-        return qs.none()
-    
-    def perform_create(self, serializer):
-        serializer.save(rater=self.request.user)
+        shift_rating = rate_shift(
+            user=request.user,
+            assignment_id=serializer.validated_data["assignment"].id,
+            rating=serializer.validated_data["rating"],
+            review=serializer.validated_data.get("review", "")
+        )
+
+        return success_response(ShiftRatingSerializer(shift_rating).data, "Shift rated", status.HTTP_201_CREATED)

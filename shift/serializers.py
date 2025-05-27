@@ -1,209 +1,124 @@
 from rest_framework import serializers
-from .models import (
-    Shift, ShiftApproval, ShiftApplication, 
-    ShiftAssignment, Notification, ShiftRating, ShiftStatus
-)
 from users.models import User
-from django.utils import timezone
-from rest_framework.exceptions import ValidationError
+from .models import Shift, ShiftAssignment, ShiftRating
+
+# Minimal nested serializers for read-only nested display
+
+class UserNestedSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email']  
+
+class ShiftNestedSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Shift
+        fields = ['id', 'name', 'start_time', 'end_time']
+
+class ShiftAssignmentNestedSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ShiftAssignment
+        fields = ['id', 'status', 'filled_openings']
+
+# Main serializers
 
 class ShiftSerializer(serializers.ModelSerializer):
-    employer_name = serializers.CharField(source='employer.full_name', read_only=True)
-    manager_name = serializers.CharField(source='manager.full_name', read_only=True)
-    available_openings = serializers.IntegerField(read_only=True)
-    total_pay = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
-    can_apply = serializers.SerializerMethodField()
-    
+    employer = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
+    manager = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), allow_null=True, required=False)
+
+    # Nested read-only representations for GET
+    employer_detail = UserNestedSerializer(source='employer', read_only=True)
+    manager_detail = UserNestedSerializer(source='manager', read_only=True)
+
     class Meta:
         model = Shift
         fields = [
-            'id', 'name', 'description', 'location', 'location_map_url', 'company_name',
-            'start_time', 'end_time', 'base_pay', 'bonus_pay', 'total_pay',
-            'total_openings', 'filled_openings', 'available_openings',
-            'status', 'employer', 'employer_name', 'manager', 'manager_name',
-            'requirements', 'prohibited_items', 'image_url', 'created_at',
-            'updated_at', 'can_apply'
+            "id",
+            "employer",
+            "employer_detail",
+            "manager",
+            "manager_detail",
+            "name",
+            "description",
+            "location",
+            "location_map_url",
+            "company_name",
+            "start_time",
+            "end_time",
+            "base_pay",
+            "bonus_pay",
+            "total_pay",
+            "total_openings",
+            "status",
+            "is_active",
+            "requirements",
+            "prohibited_items",
+            "image_url",
+            "created_at",
+            "updated_at",
         ]
-        extra_kwargs = {
-            'employer': {'read_only': True},
-            'manager': {'read_only': True},
-            'status': {'read_only': True},
-        }
-    
-    def get_can_apply(self, obj):
-        request = self.context.get('request')
-        if not request or not request.user.is_authenticated:
-            return False
-        
-        return (
-            request.user.is_employee() and
-            obj.status == ShiftStatus.PUBLISHED and
-            obj.available_openings > 0 and
-            obj.start_time > timezone.now() and
-            not obj.applications.filter(employee=request.user).exists()
-        )
-    
-    def validate(self, data):
-        if 'start_time' in data and 'end_time' in data:
-            if data['start_time'] >= data['end_time']:
-                raise ValidationError("End time must be after start time.")
-        
-        if 'total_openings' in data and 'filled_openings' in data:
-            if data['filled_openings'] > data['total_openings']:
-                raise ValidationError("Filled openings cannot exceed total openings.")
-        
-        return data
-    
-    def create(self, validated_data):
-        request = self.context.get('request')
-        if not request or not request.user.is_authenticated:
-            raise ValidationError("Authentication required")
-        
-        validated_data['employer'] = request.user
-        return super().create(validated_data)
+        read_only_fields = ('created_at', 'updated_at')
 
-class ShiftApprovalSerializer(serializers.ModelSerializer):
-    manager_name = serializers.CharField(source='manager.full_name', read_only=True)
-    shift_details = ShiftSerializer(source='shift', read_only=True)
-    
-    class Meta:
-        model = ShiftApproval
-        fields = [
-            'id', 'shift', 'shift_details', 'manager', 'manager_name',
-            'status', 'comments', 'created_at', 'updated_at'
-        ]
-        extra_kwargs = {
-            'manager': {'read_only': True},
-        }
-    
-    def update(self, instance, validated_data):
-        request = self.context.get('request')
-        if not request or not request.user.is_authenticated or not request.user.is_manager():
-            raise ValidationError("Only managers can update approvals")
-        
-        if instance.manager != request.user:
-            raise ValidationError("You can only update your own approvals")
-        
-        return super().update(instance, validated_data)
-
-class ShiftApplicationSerializer(serializers.ModelSerializer):
-    employee_name = serializers.CharField(source='employee.full_name', read_only=True)
-    shift_details = ShiftSerializer(source='shift', read_only=True)
-    
-    class Meta:
-        model = ShiftApplication
-        fields = [
-            'id', 'shift', 'shift_details', 'employee', 'employee_name',
-            'status', 'notes', 'employer_notes', 'created_at', 'updated_at'
-        ]
-        extra_kwargs = {
-            'employee': {'read_only': True},
-            'status': {'read_only': True},
-        }
-    
     def validate(self, data):
-        request = self.context.get('request')
-        if not request or not request.user.is_authenticated:
-            raise ValidationError("Authentication required")
+        user = self.context['request'].user
+        company_name = data.get('company_name')
         
-        shift = data.get('shift') or self.instance.shift if self.instance else None
-        if not shift:
-            raise ValidationError("Shift is required")
+        # Validate start and end time (support partial update)
+        start_time = data.get('start_time', getattr(self.instance, 'start_time', None))
+        end_time = data.get('end_time', getattr(self.instance, 'end_time', None))
+        if start_time and end_time and start_time >= end_time:
+            raise serializers.ValidationError("start_time must be before end_time.")
         
-        if not shift.check_availability():
-            raise ValidationError("This shift is not available for applications")
+        # Validate company_name depending on user role
+        if user.is_manager and not company_name:
+            raise serializers.ValidationError({"company_name": "This field is required for managers."})
         
-        if request.user == shift.employer:
-            raise ValidationError("You cannot apply to your own shift")
-        
+        if not user.is_manager and company_name:
+            raise serializers.ValidationError({"company_name": "Only managers can provide company_name."})
+
         return data
-    
-    def create(self, validated_data):
-        request = self.context.get('request')
-        validated_data['employee'] = request.user
-        return super().create(validated_data)
+
 
 class ShiftAssignmentSerializer(serializers.ModelSerializer):
-    employee_name = serializers.CharField(source='employee.full_name', read_only=True)
-    shift_details = ShiftSerializer(source='shift', read_only=True)
-    
+    shift = serializers.PrimaryKeyRelatedField(queryset=Shift.objects.all())
+    employee = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
+
+    shift_detail = ShiftNestedSerializer(source='shift', read_only=True)
+    employee_detail = UserNestedSerializer(source='employee', read_only=True)
+
     class Meta:
         model = ShiftAssignment
         fields = [
-            'id', 'shift', 'shift_details', 'employee', 'employee_name',
-            'application', 'actual_start_time', 'actual_end_time',
-            'completed_notes', 'created_at', 'updated_at'
+            "id",
+            "shift",
+            "shift_detail",
+            "employee",
+            "employee_detail",
+            "status",
+            "filled_openings",
+            "actual_start_time",
+            "actual_end_time",
+            "notify_time_start",
+            "completed_notes",
+            "created_at",
+            "updated_at",
         ]
-    
+        read_only_fields = ('created_at', 'updated_at')
+
     def validate(self, data):
-        if 'actual_start_time' in data and 'actual_end_time' in data:
-            if data['actual_start_time'] >= data['actual_end_time']:
-                raise ValidationError("End time must be after start time")
-        
+        actual_start = data.get('actual_start_time', getattr(self.instance, 'actual_start_time', None))
+        actual_end = data.get('actual_end_time', getattr(self.instance, 'actual_end_time', None))
+        if actual_start and actual_end and actual_start > actual_end:
+            raise serializers.ValidationError("actual_start_time must be before or equal to actual_end_time.")
         return data
 
-class NotificationSerializer(serializers.ModelSerializer):
-    notification_type_display = serializers.CharField(
-        source='get_notification_type_display', read_only=True
-    )
-    
-    class Meta:
-        model = Notification
-        fields = [
-            'id', 'notification_type', 'notification_type_display',
-            'message', 'is_read', 'email_sent', 'push_sent',
-            'created_at', 'updated_at'
-        ]
-        extra_kwargs = {
-            'is_read': {'read_only': True},
-            'email_sent': {'read_only': True},
-            'push_sent': {'read_only': True},
-        }
+
+
 
 class ShiftRatingSerializer(serializers.ModelSerializer):
-    rater_name = serializers.CharField(source='rater.full_name', read_only=True)
-    ratee_name = serializers.CharField(source='ratee.full_name', read_only=True)
-    
     class Meta:
         model = ShiftRating
         fields = [
-            'id', 'shift', 'assignment', 'rater', 'rater_name',
-            'ratee', 'ratee_name', 'rating', 'comments',
-            'created_at', 'updated_at'
+            'id', 'shift', 'assignment', 'rater', 'ratee',
+            'rating', 'review', 'created_at', 'updated_at'
         ]
-        extra_kwargs = {
-            'rater': {'read_only': True},
-        }
-    
-    def validate(self, data):
-        request = self.context.get('request')
-        if not request or not request.user.is_authenticated:
-            raise ValidationError("Authentication required")
-        
-        assignment = data.get('assignment') or self.instance.assignment if self.instance else None
-        if not assignment:
-            raise ValidationError("Assignment is required")
-        
-        # Validate that the rater is either the employee or employer
-        if request.user not in [assignment.employee, assignment.shift.employer]:
-            raise ValidationError("You can only rate shifts you're involved in")
-        
-        # Validate that the ratee is the other party
-        ratee = data.get('ratee')
-        if ratee not in [assignment.employee, assignment.shift.employer]:
-            raise ValidationError("Invalid ratee")
-        
-        # Validate that the rater and ratee are different
-        if request.user == ratee:
-            raise ValidationError("You cannot rate yourself")
-        
-        # Validate that the shift is completed
-        if assignment.shift.status != ShiftStatus.COMPLETED:
-            raise ValidationError("You can only rate completed shifts")
-        
-        return data
-    
-    def create(self, validated_data):
-        request = self.context.get('request')
-        validated_data['rater'] = request.user
-        return super().create(validated_data)
+        read_only_fields = ['id', 'created_at', 'updated_at', 'rater', 'ratee']
