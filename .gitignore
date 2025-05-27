@@ -1,3 +1,5 @@
 .env
-cert.cert
+cert.crt
 cert.key
+cert.pem
+key.pem
