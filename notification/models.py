@@ -1,14 +1,13 @@
 from django.conf import settings
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 from users.models import User
 from shift.models import Shift, ShiftAssignment, TimeStampedModel
-from django.utils.translation import gettext_lazy as _
 
-class DeviceType(models.Model):
-    DEVICE_TYPES = (
-        ('ios', 'iOS'),
-        ('android', 'Android')
-    )
+
+class DeviceType(models.TextChoices):
+    IOS = 'ios', 'iOS'
+    ANDROID = 'android', 'Android'
 
 
 class NotificationType(models.TextChoices):
@@ -19,27 +18,27 @@ class NotificationType(models.TextChoices):
     SHIFT_CANCELLED = 'SHIFT_CANCELLED', _('Shift Cancelled')
     SHIFT_STARTING_SOON = 'SHIFT_STARTING_SOON', _('Shift Starting Soon')
     SHIFT_REMINDER = 'SHIFT_REMINDER', _('Shift Reminder')
-
+    USER_PROFILE_UPDATED = 'USER_PROFILE_UPDATED', _('User Profile Updated')
 
 
 class Device(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     device_token = models.CharField(max_length=255, unique=True)
-    device_type = models.CharField(max_length=10, choices=DeviceType)
-    
+    device_type = models.CharField(max_length=10, choices=DeviceType.choices)
+
     def __str__(self):
         return f"{self.user.username} - {self.device_type}"
-    
+
 
 class Notification(TimeStampedModel):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications', help_text=_("User receiving this notification"), verbose_name=_("User"))
-    notification_type = models.CharField(max_length=50, choices=NotificationType.choices, help_text=_("Type of notification"), verbose_name=_("Notification Type"))
-    message = models.TextField(help_text=_("Notification message content"), verbose_name=_("Message"))
-    related_shift = models.ForeignKey(Shift, on_delete=models.CASCADE, null=True, blank=True, help_text=_("Related shift, if applicable"), verbose_name=_("Related Shift"))
-    related_assignment = models.ForeignKey(ShiftAssignment, on_delete=models.CASCADE, null=True, blank=True, help_text=_("Related shift assignment, if applicable"), verbose_name=_("Related Assignment"))
-    is_read = models.BooleanField(default=False, help_text=_("Whether the user has read the notification"), verbose_name=_("Is Read"))
-    email_sent = models.BooleanField(default=False, help_text=_("Whether the notification was sent via email"), verbose_name=_("Email Sent"))
-    push_sent = models.BooleanField(default=False, help_text=_("Whether the notification was sent as a push notification"), verbose_name=_("Push Sent"))
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
+    notification_type = models.CharField(max_length=50, choices=NotificationType.choices)
+    message = models.TextField()
+    related_shift = models.ForeignKey(Shift, on_delete=models.SET_NULL, null=True, blank=True)
+    related_assignment = models.ForeignKey(ShiftAssignment, on_delete=models.SET_NULL, null=True, blank=True)
+    is_read = models.BooleanField(default=False)
+    email_sent = models.BooleanField(default=False)
+    push_sent = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = _("Notification")

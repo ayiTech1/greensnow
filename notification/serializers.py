@@ -1,14 +1,15 @@
 from rest_framework import serializers
-from notification.models import Notification
+from notification.models import Notification, Device
 from shift.serializers import ShiftAssignmentNestedSerializer, ShiftNestedSerializer, UserNestedSerializer
 from shift.models import Shift, ShiftAssignment
-from notification.models import Device
 from users.models import User
+
 
 class DeviceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Device
         fields = ['device_token', 'device_type']
+
 
 class NotificationSerializer(serializers.ModelSerializer):
     user = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
