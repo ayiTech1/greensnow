@@ -15,7 +15,7 @@ def update_shift(user, shift, validated_data):
     if not (user.is_manager or (user.is_employer and shift.employer.user == user)):
         raise PermissionDenied("You do not have permission to update this shift.")
 
-    # 🧭 If address is being updated, get new lat/lng
+    # If address is being updated, get new lat/lng
     new_address = validated_data.get('address')
     if new_address and new_address != shift.address:
         latitude, longitude = geocode_address_google(new_address)
