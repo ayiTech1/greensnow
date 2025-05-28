@@ -18,7 +18,7 @@ class NotificationType(models.TextChoices):
     SHIFT_CANCELLED = 'SHIFT_CANCELLED', _('Shift Cancelled')
     SHIFT_STARTING_SOON = 'SHIFT_STARTING_SOON', _('Shift Starting Soon')
     SHIFT_REMINDER = 'SHIFT_REMINDER', _('Shift Reminder')
-    USER_PROFILE_UPDATED = 'USER_PROFILE_UPDATED', _('User Profile Updated')
+    USER_PROFILE = 'USER_PROFILE', _('User Profile')
 
 
 class Device(models.Model):
@@ -33,11 +33,10 @@ class Device(models.Model):
 class Notification(TimeStampedModel):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
     notification_type = models.CharField(max_length=50, choices=NotificationType.choices)
-    message = models.TextField()
+    message = models.TextField(max_length=250, verbose_name=_("Message"), help_text=_("Notification message"))
     related_shift = models.ForeignKey(Shift, on_delete=models.SET_NULL, null=True, blank=True)
     related_assignment = models.ForeignKey(ShiftAssignment, on_delete=models.SET_NULL, null=True, blank=True)
     is_read = models.BooleanField(default=False)
-    email_sent = models.BooleanField(default=False)
     push_sent = models.BooleanField(default=False)
 
     class Meta:

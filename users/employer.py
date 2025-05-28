@@ -1,9 +1,6 @@
 from users.models import EmployerProfile
-from notification.services import (
-    get_user_filtered_queryset,
-    get_user_profile_or_none,
-    save_and_notify,
-)
+from users.services import (get_user_filtered_queryset, get_user_profile_or_none)
+from notification.services import (save_and_notify)
 from users.manager import get_manager_employer_profiles
 from rest_framework.response import Response
 from rest_framework import status
@@ -43,10 +40,6 @@ def me_employer_profile(viewset, request):
     return Response(serializer.data)
 
 def status_employeer_profile(viewset, request):
-    """
-    Returns the approval status of the employer's profile.
-    If manager, returns all employer statuses.
-    """
     user = request.user
     if getattr(user, 'is_manager', False):
         queryset = get_employer_queryset(user)

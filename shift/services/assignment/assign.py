@@ -1,9 +1,10 @@
 import logging
 from django.core.exceptions import ValidationError, PermissionDenied
 from shift.models import Shift, ShiftAssignment
-from notification.services import notify_user
+from notification.utils import send_push_notification
 from shift.models import Shift, ShiftAssignment
 from django.db import transaction
+from users.models import User
 
 
 logger = logging.getLogger('shift')
@@ -40,7 +41,13 @@ def assign_shift_to_employee(user, shift_id):
     shift.filled_openings += 1
     shift.save()
 
-    notify_user(shift.employer.user, f"{user.get_full_name()} has taken shift {shift.id}.", related_shift=shift)
-    notify_user("manager", f"{user.get_full_name()} has taken shift {shift.id}.", related_shift=shift)
-
+    send_push_notification(shift.employer.user, f"{user.username()} has taken shift {shift.id}.", notification_type='SHIFT_TAKEN', shift=shift)
+    managers = User.objects.filter(is_manager=True)
+    for manager in managers:
+        send_push_notification(
+            manager,
+            f"{user.username()} has taken shift {shift.id}.",
+            notification_type='SHIFT_TAKEN',
+            shift=shift
+        )
     return assignment

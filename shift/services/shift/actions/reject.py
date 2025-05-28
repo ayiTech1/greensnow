@@ -2,7 +2,7 @@ import logging
 from django.utils import timezone
 from django.core.exceptions import ValidationError, PermissionDenied
 from users.models import  User
-from notification.services import notify_user
+from notification.utils import send_push_notification
 from shift.models import Shift
 from django.db import transaction
 
@@ -29,8 +29,8 @@ def reject_shift(user: User, shift_id: int, reason: str = ''):
     shift.rejected_at = timezone.now()
     shift.save()
 
-    notify_user(shift.employer.user, f"Your shift {shift.id} has been rejected. Reason: {reason}", related_shift=shift)
-    notify_user("manager", f"Shift {shift.id} has been rejected.", related_shift=shift)
+    send_push_notification(shift.employer.user, f"Your shift {shift.id} has been rejected. Reason: {reason}", notification_type='SHIFT_REJECTED',shift=shift)
+    send_push_notification(user, f"You rejected {shift.id}", notification_type='SHIFT_REJECTED',shift=shift)
 
     logger.info(f"Shift {shift.id} rejected by manager {user.email} with reason: {reason}")
 

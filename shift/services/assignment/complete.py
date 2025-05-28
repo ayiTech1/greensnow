@@ -2,8 +2,9 @@ import logging
 from django.utils import timezone
 from django.core.exceptions import ValidationError, PermissionDenied
 from shift.models import Shift, ShiftAssignment
-from notification.services import notify_user
+from notification.utils import send_push_notification
 from django.db import transaction
+from users.models import User
 
 logger = logging.getLogger('shift')
 
@@ -33,12 +34,18 @@ def complete_shift_assignment(user, shift_id, completed_notes=None):
     assignment.save()
 
     # Notify employer and managers
-    notify_user(shift.employer.user,
-                f"{user.get_full_name()} has completed shift {shift.id}.",
-                related_shift=shift)
-    notify_user("manager",
-                f"{user.get_full_name()} has completed shift {shift.id}.",
-                related_shift=shift)
+    send_push_notification(shift.employer.user,
+                f"{user.user()} has completed shift {shift.id}.",
+                notification_type='SHIFT_COMPLETED',shift=shift)
+    
+    managers = User.objects.filter(is_manager=True)
+    for manager in managers:
+        send_push_notification(
+            manager,
+            f"{user.username()} has completed shift {shift.id}.",
+            notification_type='SHIFT_COMPLETED',
+            shift=shift
+        )
 
     logger.info(f"Shift {shift.id} completed by {user.email} at {now.isoformat()}")
     return assignment

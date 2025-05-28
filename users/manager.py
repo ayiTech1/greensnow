@@ -1,5 +1,6 @@
 from users.models import EmployerProfile, EmployeeProfile
-from notification.services import change_status_and_notify, get_profiles_by_status
+from notification.services import (change_status_and_notify)
+from users.services import (get_profiles_by_status)
 from rest_framework.response import Response
 from rest_framework import status
 

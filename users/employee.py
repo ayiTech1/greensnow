@@ -1,5 +1,5 @@
 from users.models import EmployeeProfile
-from notification.services import (
+from users.services import (
     get_user_filtered_queryset,
     get_user_profile_or_none,
     save_and_notify,

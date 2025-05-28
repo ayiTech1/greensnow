@@ -2,9 +2,10 @@ import logging
 from django.utils import timezone
 from django.core.exceptions import ValidationError, PermissionDenied
 from shift.models import Shift, ShiftAssignment
-from notification.services import notify_user
+from notification.utils import send_push_notification
 from shift.models import Shift, ShiftAssignment
 from django.db import transaction
+from users.models import User
 
 
 logger = logging.getLogger('shift')
@@ -33,7 +34,22 @@ def start_shift_assignment(user, shift_id):
     assignment.actual_start_time = now
     assignment.save()
 
-    notify_user(shift.employer.user, f"{user.get_full_name()} has started shift {shift.id}.", related_shift=shift)
-    notify_user("manager", f"{user.get_full_name()} has started shift {shift.id}.", related_shift=shift)
+    # Notify the employer
+    send_push_notification(
+        shift.employer.user,
+        f"{user.username()} has started shift {shift.id}.",
+        notification_type='SHIFT_STARTED',
+        shift=shift
+    )
+
+    # Notify all managers
+    managers = User.objects.filter(is_manager=True)
+    for manager in managers:
+        send_push_notification(
+            manager,
+            f"{user.username()} has started shift {shift.id}.",
+            notification_type='SHIFT_STARTED',
+            shift=shift
+        )
 
     return assignment

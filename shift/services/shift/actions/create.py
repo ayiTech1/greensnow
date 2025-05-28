@@ -2,7 +2,7 @@ import logging
 from django.core.exceptions import ValidationError, PermissionDenied
 from users.models import EmployerProfile
 from shift.models import Shift
-from notification.services import notify_user
+from notification.utils import send_push_notification
 from django.db import transaction
 from shift.utils.google_address import geocode_address_google
 
@@ -50,5 +50,5 @@ def create_shift(user, validated_data):
 
     shift = Shift.objects.create(**validated_data)
     logger.info(f"Shift created by {user.email} (role: {user.primary_role}) - Shift ID: {shift.id}")
-    notify_user(shift.employer.user, f"New shift created with status: {shift.status}", related_shift=shift)
+    send_push_notification(shift.employer.user, f"New shift created with status: {shift.status}", notification_type='SHIFT_CREATED', shift=shift)
     return shift

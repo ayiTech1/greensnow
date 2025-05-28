@@ -1,6 +1,6 @@
 import logging
 from django.core.exceptions import PermissionDenied
-from notification.services import notify_user
+from notification.utils import send_push_notification
 from django.db import transaction
 from shift.utils.google_address import geocode_address_google
 
@@ -29,5 +29,5 @@ def update_shift(user, shift, validated_data):
 
     shift.save()
     logger.info(f"Shift updated by {user.email} - Shift ID: {shift.id}")
-    notify_user(shift.employer.user, f"Shift {shift.id} updated.", related_shift=shift)
+    send_push_notification(shift.employer.user, f"Shift {shift.id} updated.", notification_type='SHIFT_UPDATED',shift=shift)
     return shift

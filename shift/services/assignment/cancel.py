@@ -2,9 +2,10 @@ import logging
 from django.utils import timezone
 from django.core.exceptions import ValidationError, PermissionDenied
 from shift.models import Shift, ShiftAssignment
-from notification.services import notify_user
+from notification.utils import send_push_notification
 from shift.models import Shift, ShiftAssignment
 from django.db import transaction
+from users.models import User
 
 
 logger = logging.getLogger('shift')
@@ -48,9 +49,16 @@ def cancel_shift_assignment(user, shift_id, confirm=False):
         user.save()
 
     # Notify employer and manager
-    notify_user(shift.employer.user, f"{user.get_full_name()} has canceled shift {shift.id}.", related_shift=shift)
-    notify_user("manager", f"{user.get_full_name()} canceled shift {shift.id}.", related_shift=shift)
+    send_push_notification(shift.employer.user, f"{user.username()} has canceled shift {shift.id}.", notification_type='SHIFT_CANCELED',shift=shift)
 
+    managers = User.objects.filter(is_manager=True)
+    for manager in managers:
+        send_push_notification(
+            manager,
+            f"{user.username()} has canceled shift {shift.id}.",
+            notification_type='SHIFT_CANCELED',
+            shift=shift
+        )
     return {
         "success": True,
         "message": f"Shift {shift.id} canceled. 5 has been deducted from your rate.",
