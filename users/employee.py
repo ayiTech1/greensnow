@@ -1,9 +1,9 @@
 from users.models import EmployeeProfile
 from users.services import (
     get_user_filtered_queryset,
-    get_user_profile_or_none,
-    save_and_notify,
+    get_user_profile,
 )
+from notification.services import save_and_notify
 from users.manager import get_manager_employee_profiles
 from rest_framework.response import Response
 from rest_framework import status
@@ -14,7 +14,7 @@ def get_employee_queryset(user):
     return get_user_filtered_queryset(user, EmployeeProfile)
 
 def get_employee_profile(user):
-    return get_user_profile_or_none(user, EmployeeProfile)
+    return get_user_profile(user, EmployeeProfile)
 
 
 

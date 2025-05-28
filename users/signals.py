@@ -7,11 +7,6 @@ from django.db.models.signals import post_migrate
 from django.apps import apps
 from .models import Role
 
-class YourAppConfig(AppConfig):
-    name = 'users'
-
-    def ready(self):
-        import users.signals
 
 @receiver(post_save, sender=User)
 def create_user_profile(sender, instance, created, **kwargs):

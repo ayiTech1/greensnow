@@ -3,7 +3,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from shift.permissions import CanViewShift, CanEditShift, IsManagerOrEmployer, IsManager, IsEmployee
-from django.core.exceptions import ValidationError, PermissionDenied
 from shift.serializers import (ShiftSerializer, ShiftAssignmentSerializer, ShiftRatingSerializer)
 from shift.services.shift.actions.create import create_shift
 from shift.services.shift.actions.update import update_shift

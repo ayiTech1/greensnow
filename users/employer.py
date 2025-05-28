@@ -1,5 +1,5 @@
 from users.models import EmployerProfile
-from users.services import (get_user_filtered_queryset, get_user_profile_or_none)
+from users.services import (get_user_filtered_queryset, get_user_profile)
 from notification.services import (save_and_notify)
 from users.manager import get_manager_employer_profiles
 from rest_framework.response import Response
@@ -11,7 +11,7 @@ def get_employer_queryset(user):
     return get_user_filtered_queryset(user, EmployerProfile)
 
 def get_employer_profile(user):
-    return get_user_profile_or_none(user, EmployerProfile)
+    return get_user_profile(user, EmployerProfile)
 
 
 def update_employer_profile(serializer):
